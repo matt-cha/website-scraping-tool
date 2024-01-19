@@ -46,6 +46,6 @@ while True:
 
 df = pd.json_normalize(res)
 
-df.to_csv('resultsused1.csv')
+df.to_csv('results_used_f.csv')
 
 print(f"Scraping completed for all pages.")

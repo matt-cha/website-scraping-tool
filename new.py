@@ -1,5 +1,6 @@
 import requests
 import pandas as pd
+from pandas import json_normalize
 
 url = "https://www.coastlinecdjr.com/apis/widget/INVENTORY_LISTING_DEFAULT_AUTO_NEW:inventory-data-bus1/getInventory"
 res = []
@@ -46,6 +47,45 @@ while True:
 
 df = pd.json_normalize(res)
 
-df.to_csv('results7.csv')
+df = df.assign(id=df['vin'])
+
+df = df.assign(condition=df['newOrUsed'])
+
+df['title'] = df['condition'].str.capitalize() + ' ' + df['modelYear'].astype(str) + ' ' + df['make'] + ' ' + df['model'] + ' ' + df['trim'] + ' ' + df['bodyStyle']
+
+df['description'] = 'testfield' + df['condition'].str.capitalize() + ' ' + df['modelYear'].astype(str) + ' ' + df['make'] + ' ' + df['model'] + ' ' + df['trim'] + ' ' + df['bodyStyle']
+
+df['availability'] = 'in stock'
+
+df['price'] = df['pricing.finalPrice'].replace('[^\d.]', '', regex=True).astype(float)
+
+df['price'] = df['price'].map('{:.2f}'.format) + ' USD'
+
+df.rename(columns={"link": "old_link"}, inplace=True)
+
+df['link'] = 'https://www.coastlinecdjr.com' + df['old_link']
+
+image_data = df['images'].apply(lambda x: {str(img['id']): (img['uri'], img['thumbnail']['uri']) for img in x})
+
+image_columns = {}
+for img_dict in image_data:
+    for img_id, img_urls in img_dict.items():
+        if img_id not in image_columns:
+            image_columns[img_id] = {'uri': [], 'thumbnail_uri': []}
+        image_columns[img_id]['uri'].append(img_urls[0])
+        image_columns[img_id]['thumbnail_uri'].append(img_urls[1])
+
+# Create new columns for each image id and its respective URLs
+for img_id, img_urls in image_columns.items():
+    # Pad with NaNs to match the number of rows in df
+    df[f'image_{img_id}_uri'] = img_urls['uri'] + [float('nan')] * (len(df) - len(img_urls['uri']))
+    df[f'image_{img_id}_thumbnail_uri'] = img_urls['thumbnail_uri'] + [float('nan')] * (len(df) - len(img_urls['thumbnail_uri']))
+
+
+
+df = df.assign(brand=df['make'])
+
+df.to_csv('results_new_15.5.csv', index=False)
 
 print(f"Scraping completed for all pages.")
+
