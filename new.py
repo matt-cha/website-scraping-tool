@@ -45,25 +45,125 @@ while True:
         print(f"Failed to fetch data. Status code: {response.status_code}")
         break
 
+print(data)
+
+
 df = pd.json_normalize(res)
 
 df = df.assign(id=df['vin'])
 
+df = df.assign(vehicle_id=df['vin'])
+
 df = df.assign(condition=df['newOrUsed'])
 
-df['title'] = df['condition'].str.capitalize() + ' ' + df['modelYear'].astype(str) + ' ' + df['make'] + ' ' + df['model'] + ' ' + df['trim'] + ' ' + df['bodyStyle']
+df = df.assign(exterior_color=df['exteriorColor'])
 
-df['description'] = 'testfield' + df['condition'].str.capitalize() + ' ' + df['modelYear'].astype(str) + ' ' + df['make'] + ' ' + df['model'] + ' ' + df['trim'] + ' ' + df['bodyStyle']
+df.rename(columns={"old_transmission": "transmission"}, inplace=True)
 
-df['availability'] = 'in stock'
+df['transmission'] = 'automatic'
+
+df = df.assign(state_of_vehicle=df['condition'])
+
+df['body_style'] = 'other'
+
+df['title'] = df['condition'].str.capitalize() + ' ' + df['modelYear'].astype(str) + ' ' + df['make'] + ' ' + df['model'] + (' ' + df['trim'] if not df['trim'].isnull().values.any() else '') + ' ' + df['bodyStyle']
+
+df['description'] = df['condition'].str.capitalize() + ' ' + df['modelYear'].astype(str) + ' ' + df['make'] + ' ' + df['model'] + (' ' + df['trim'] if not df['trim'].isnull().values.any() else '') + ' ' + df['bodyStyle']
+
+df = df.assign(year=df['modelYear'])
+
+df.rename(columns={"old_condition": "condition"}, inplace=True)
+
+df['condition'] = 'EXCELLENT'
+
+df['visibility'] = 'active'
+
+df['mileage.value'] = 0
+
+df['mileage.unit'] = 'MI'
+
+df = df.assign(region=df['address.state'])
+
+# address = {
+#     'addr1': '32881 Camino Capistrano',
+#     'city': 'San Juan Capistrano',
+#     'region': 'CA',
+#     'postal_code': '92675-4509',
+#     'country': 'US'
+# }
+
+# df['address'] = [address] * len(df)
+
+def get_address(row):
+    if 'accounts' in data and 'coastlinechryslerdodgejeepramcllc' in data['accounts']:
+        account_info = data['accounts']['coastlinechryslerdodgejeepramcllc']
+        address_info = account_info.get('address')
+        if address_info:
+            return (
+                address_info['firstLineAddress'] + ', ' + 
+                address_info['city'] + ', ' + 
+                address_info['state'] + ' ' + 
+                address_info['postalCode'] + ', ' + 
+                address_info['country']
+            )
+    return None
+
+# Apply the function to create the address column
+df['address'] = df.apply(get_address, axis=1)
+
+# address
+# if 'accounts' in data:
+#     accounts_data = data['accounts']
+#     print("Accounts keys:", accounts_data.keys())
+#     if 'coastlinechryslerdodgejeepramcllc' in accounts_data:
+
+#         address_info = accounts_data['coastlinechryslerdodgejeepramcllc'].get('address')
+#         if address_info:
+#             df['address'] = (
+#                 address_info['firstLineAddress'] + ', ' + 
+#                 address_info['city'] + ', ' + 
+#                 address_info['state'] + ' ' + 
+#                 address_info['postalCode'] + ', ' + 
+#                 address_info['country']
+#             )
+#         else:
+#             print("No address info for coastlinechryslerdodgejeepramcllc")
+#     else:
+#         print("coastlinechryslerdodgejeepramcllc not found in accounts")
+# else:
+#     print("No accounts data in the response")
+  # address end  
+
+# if 'accounts' in data:
+#     accounts_data = data['accounts']
+#     print("response.text:", response.text)
+#     if 'coastlinechryslerdodgejeepramcllc' in accounts_data:
+#         address_info = accounts_data['coastlinechryslerdodgejeepramcllc'].get('address')
+#         if address_info:
+#             df['address'] = (
+#                 address_info['firstLineAddress'] + ', ' + 
+#                 address_info['city'] + ', ' + 
+#                 address_info['state'] + ' ' + 
+#                 address_info['postalCode'] + ', ' + 
+#                 address_info['country']
+#             )
+#         else:
+#             print("No address info for coastlinechryslerdodgejeepramcllc")
+#     else:
+#         print("coastlinechryslerdodgejeepramcllc not found in accounts")
+# else:
+#     print("No accounts data in the response")
+
+    
+df['availability'] = 'available'
 
 df['price'] = df['pricing.finalPrice'].replace('[^\d.]', '', regex=True).astype(float)
 
-df['price'] = df['price'].map('{:.2f}'.format) + ' USD'
+df['price'] = df['price'].map('{:,.0f} USD'.format)
 
 df.rename(columns={"link": "old_link"}, inplace=True)
 
-df['link'] = 'https://www.coastlinecdjr.com' + df['old_link']
+df['url'] = 'https://www.coastlinecdjr.com' + df['old_link']
 
 image_data = df['images'].apply(lambda x: {str(img['id']): (img['uri'], img['thumbnail']['uri']) for img in x})
 
@@ -75,17 +175,11 @@ for img_dict in image_data:
         image_columns[img_id]['uri'].append(img_urls[0])
         image_columns[img_id]['thumbnail_uri'].append(img_urls[1])
 
-# Create new columns for each image id and its respective URLs
 for img_id, img_urls in image_columns.items():
-    # Pad with NaNs to match the number of rows in df
-    df[f'image_{img_id}_uri'] = img_urls['uri'] + [float('nan')] * (len(df) - len(img_urls['uri']))
-    df[f'image_{img_id}_thumbnail_uri'] = img_urls['thumbnail_uri'] + [float('nan')] * (len(df) - len(img_urls['thumbnail_uri']))
+    df[f'image[{img_id}].url'] = img_urls['uri'] + [float('nan')] * (len(df) - len(img_urls['uri']))
+    df[f'image[{img_id}].thumbnail_url'] = img_urls['thumbnail_uri'] + [float('nan')] * (len(df) - len(img_urls['thumbnail_uri']))
 
-
-
-df = df.assign(brand=df['make'])
-
-df.to_csv('results_new_15.5.csv', index=False)
+df.to_csv('results_address.csv', index=False)
 
 print(f"Scraping completed for all pages.")
 
