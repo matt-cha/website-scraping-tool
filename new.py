@@ -1,6 +1,8 @@
 import requests
 import pandas as pd
 from pandas import json_normalize
+import gspread
+sa = gspread.service_account()
 
 url = "https://www.coastlinecdjr.com/apis/widget/INVENTORY_LISTING_DEFAULT_AUTO_NEW:inventory-data-bus1/getInventory"
 res = []
@@ -84,77 +86,16 @@ df['mileage.unit'] = 'MI'
 
 df = df.assign(region=df['address.state'])
 
-# address = {
-#     'addr1': '32881 Camino Capistrano',
-#     'city': 'San Juan Capistrano',
-#     'region': 'CA',
-#     'postal_code': '92675-4509',
-#     'country': 'US'
-# }
+address = {
+    'addr1': '32881 Camino Capistrano',
+    'city': 'San Juan Capistrano',
+    'region': 'CA',
+    'postal_code': '92675-4509',
+    'country': 'US'
+}
 
-# df['address'] = [address] * len(df)
+df['address'] = [address] * len(df)
 
-def get_address(row):
-    if 'accounts' in data and 'coastlinechryslerdodgejeepramcllc' in data['accounts']:
-        account_info = data['accounts']['coastlinechryslerdodgejeepramcllc']
-        address_info = account_info.get('address')
-        if address_info:
-            return (
-                address_info['firstLineAddress'] + ', ' + 
-                address_info['city'] + ', ' + 
-                address_info['state'] + ' ' + 
-                address_info['postalCode'] + ', ' + 
-                address_info['country']
-            )
-    return None
-
-# Apply the function to create the address column
-df['address'] = df.apply(get_address, axis=1)
-
-# address
-# if 'accounts' in data:
-#     accounts_data = data['accounts']
-#     print("Accounts keys:", accounts_data.keys())
-#     if 'coastlinechryslerdodgejeepramcllc' in accounts_data:
-
-#         address_info = accounts_data['coastlinechryslerdodgejeepramcllc'].get('address')
-#         if address_info:
-#             df['address'] = (
-#                 address_info['firstLineAddress'] + ', ' + 
-#                 address_info['city'] + ', ' + 
-#                 address_info['state'] + ' ' + 
-#                 address_info['postalCode'] + ', ' + 
-#                 address_info['country']
-#             )
-#         else:
-#             print("No address info for coastlinechryslerdodgejeepramcllc")
-#     else:
-#         print("coastlinechryslerdodgejeepramcllc not found in accounts")
-# else:
-#     print("No accounts data in the response")
-  # address end  
-
-# if 'accounts' in data:
-#     accounts_data = data['accounts']
-#     print("response.text:", response.text)
-#     if 'coastlinechryslerdodgejeepramcllc' in accounts_data:
-#         address_info = accounts_data['coastlinechryslerdodgejeepramcllc'].get('address')
-#         if address_info:
-#             df['address'] = (
-#                 address_info['firstLineAddress'] + ', ' + 
-#                 address_info['city'] + ', ' + 
-#                 address_info['state'] + ' ' + 
-#                 address_info['postalCode'] + ', ' + 
-#                 address_info['country']
-#             )
-#         else:
-#             print("No address info for coastlinechryslerdodgejeepramcllc")
-#     else:
-#         print("coastlinechryslerdodgejeepramcllc not found in accounts")
-# else:
-#     print("No accounts data in the response")
-
-    
 df['availability'] = 'available'
 
 df['price'] = df['pricing.finalPrice'].replace('[^\d.]', '', regex=True).astype(float)
@@ -179,7 +120,14 @@ for img_id, img_urls in image_columns.items():
     df[f'image[{img_id}].url'] = img_urls['uri'] + [float('nan')] * (len(df) - len(img_urls['uri']))
     df[f'image[{img_id}].thumbnail_url'] = img_urls['thumbnail_uri'] + [float('nan')] * (len(df) - len(img_urls['thumbnail_uri']))
 
-df.to_csv('results_address.csv', index=False)
+# df.to_csv('results_address.csv', index=False)
+df = df.astype(str)
 
-print(f"Scraping completed for all pages.")
+sheet_name = sa.open('website scraping')
+worksheetFile = sheet_name.worksheet('Sheet1')
+worksheetFile.clear()
+worksheetFile.update([df.columns.values.tolist()] + df.values.tolist())  # update with new data
+
+print("Data updated in Google Sheets.")
+
 
