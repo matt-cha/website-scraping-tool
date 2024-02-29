@@ -1,5 +1,8 @@
 import requests
 import pandas as pd
+from pandas import json_normalize
+import gspread
+sa = gspread.service_account()
 
 url = "https://www.coastlinecdjr.com/apis/widget/INVENTORY_LISTING_DEFAULT_AUTO_NEW:inventory-data-bus1/getInventory"
 res = []
@@ -44,8 +47,87 @@ while True:
         print(f"Failed to fetch data. Status code: {response.status_code}")
         break
 
+print(data)
+
+
 df = pd.json_normalize(res)
 
-df.to_csv('results7.csv')
+df = df.assign(id=df['vin'])
 
-print(f"Scraping completed for all pages.")
+df = df.assign(vehicle_id=df['vin'])
+
+df = df.assign(condition=df['newOrUsed'])
+
+df = df.assign(exterior_color=df['exteriorColor'])
+
+df.rename(columns={"old_transmission": "transmission"}, inplace=True)
+
+df['transmission'] = 'automatic'
+
+df = df.assign(state_of_vehicle=df['condition'])
+
+df['body_style'] = 'other'
+
+df['title'] = df['condition'].str.capitalize() + ' ' + df['modelYear'].astype(str) + ' ' + df['make'] + ' ' + df['model'] + (' ' + df['trim'] if not df['trim'].isnull().values.any() else '') + ' ' + df['bodyStyle']
+
+df['description'] = df['condition'].str.capitalize() + ' ' + df['modelYear'].astype(str) + ' ' + df['make'] + ' ' + df['model'] + (' ' + df['trim'] if not df['trim'].isnull().values.any() else '') + ' ' + df['bodyStyle']
+
+df = df.assign(year=df['modelYear'])
+
+df.rename(columns={"old_condition": "condition"}, inplace=True)
+
+df['condition'] = 'EXCELLENT'
+
+df['visibility'] = 'active'
+
+df['mileage.value'] = 0
+
+df['mileage.unit'] = 'MI'
+
+df = df.assign(region=df['address.state'])
+
+address = {
+    'addr1': '32881 Camino Capistrano',
+    'city': 'San Juan Capistrano',
+    'region': 'CA',
+    'postal_code': '92675-4509',
+    'country': 'US'
+}
+
+df['address'] = [address] * len(df)
+
+df['availability'] = 'available'
+
+df['price'] = df['pricing.finalPrice'].replace('[^\d.]', '', regex=True).astype(float)
+
+df['price'] = df['price'].map('{:,.0f} USD'.format)
+
+df.rename(columns={"link": "old_link"}, inplace=True)
+
+df['url'] = 'https://www.coastlinecdjr.com' + df['old_link']
+
+image_data = df['images'].apply(lambda x: {str(img['id']): (img['uri'], img['thumbnail']['uri']) for img in x})
+
+image_columns = {}
+for img_dict in image_data:
+    for img_id, img_urls in img_dict.items():
+        if img_id not in image_columns:
+            image_columns[img_id] = {'uri': [], 'thumbnail_uri': []}
+        image_columns[img_id]['uri'].append(img_urls[0])
+        image_columns[img_id]['thumbnail_uri'].append(img_urls[1])
+
+for img_id, img_urls in image_columns.items():
+    df[f'image[{img_id}].url'] = img_urls['uri'] + [float('nan')] * (len(df) - len(img_urls['uri']))
+    df[f'image[{img_id}].thumbnail_url'] = img_urls['thumbnail_uri'] + [float('nan')] * (len(df) - len(img_urls['thumbnail_uri']))
+
+# df.to_csv('results_address.csv', index=False)
+df = df.astype(str)
+
+sheet_name = sa.open('website scraping')
+worksheetFile = sheet_name.worksheet('Sheet1')
+worksheetFile.clear()
+worksheetFile.update([df.columns.values.tolist()] + df.values.tolist())  # update with new data
+
+print("Data updated in Google Sheets.")
+
+
